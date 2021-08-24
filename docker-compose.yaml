@@ -44,7 +44,7 @@ services:
       INFLUXDB_ADMIN_USER: admin
       INFLUXDB_ADMIN_PASSWORD: admin_pass
       INFLUXDB_USER: user
-      INFLUXDB_USER_PASSWORD: user_pass
+      INFLUXDB_USER_PASSWORD: user_passs
     ports:
       - "8082:8082"
       - "8086:8086"
