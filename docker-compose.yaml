@@ -30,7 +30,10 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - grafanaData:/var/lib/grafana influxdb:
+      - grafanaData:/var/lib/grafana
+    networks:
+      - edge
+  influxdb:
     build: ./influx
     image: localbuild/influxdb:august2021
     container_name: influxdb
@@ -57,19 +60,23 @@ services:
     restart: unless-stopped
     ports:
       - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mosquittoLog:/mosquitto/log
+      - mosquittoData:/mosquitto/data
+      - mosquittoConfig:/mosquitto/config
     networks:
       - edge
-
 #Create internal link network for Containers
-  networks:
-    edge:
+networks:
+  edge:
 
 #Create Volumes for persistent Storage
-  volumes:
-    grafanaData:
-    noderedData:
-    influxData:
-    mosquittoLog:
-    mosquittoData:
-    mosquittoConfig:
-    domoticzUserdata:
+volumes:
+  grafanaData:
+  noderedData:
+  influxData:
+  mosquittoLog:
+  mosquittoData:
+  mosquittoConfig:
+  domoticzUserdata:
