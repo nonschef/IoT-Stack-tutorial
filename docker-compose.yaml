@@ -162,7 +162,7 @@ services:
     container_name: ultrafeeder
     restart: unless-stopped
     devices:
-      - /dev/bus/usb/001/003:/dev/bus/usb/001/003
+      - /dev/bus/usb/001/003:/dev/bus/usb/001/003 #evtl. anpassen!!!
     ports:
       - "8080:80"      # tar1090 Live-Karte
       - "30005:30005"  # Beast-Output (raw ADS-B Daten fuer andere Feeder)
