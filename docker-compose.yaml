@@ -1,82 +1,309 @@
-version: "3.3"
+
+#version: "3.8"
+
+# =============================================================================
+# Docker Compose Stack
+# Enth  lt: Portainer, Mosquitto, InfluxDB, Postgres, Node-RED, Grafana,
+#          ultrafeeder (ADS-B Decoder + tar1090 Karte), Flightradar24,
+#          evcc, MariaDB, phpMyAdmin, Pi-Hole
+#
+# Vor dem Start:
+# 1. Eine .env Datei im selben Verzeichnis anlegen
+# 2. Passwoerter unbedingt anpassen!
+# 3. docker compose up -d
+# =============================================================================
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  portainer_data:
+  mosquitto_data:
+  mosquitto_log:
+  influxdb_data:
+  influxdb_config:
+  postgres_data:
+  nodered_data:
+  grafana_data:
+  mariadb_data:
+  evcc_data:
+  ultrafeeder_data:
+
 services:
-  domoticz:
-    build: ./domoticz
-    image: localbuild/domoticz:august2021
-    container_name: domoticz
+
+  # ---------------------------------------------------------------------------
+  # Portainer - Docker Management UI
+  # Web-UI: https://<host>:9443
+  # ---------------------------------------------------------------------------
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8000:8000"
+      - "9443:9443"
     volumes:
-      - domoticzUserdata:/opt/domoticz/userdata
-    environment:
-      - TZ=Europe/Berlin
-  nodered:
-    build: ./nodered
-    image: localbuild/nodered:august2021
-    container_name: nodered
-    restart: unless-stopped
-    ports:
-      - "1880:1880"
-    volumes:
-      - noderedData:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
     networks:
-      - edge
-  grafana:
-    build: ./grafana
-    image: localbuild/grafana:august2021
-    container_name: grafana
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafanaData:/var/lib/grafana
-    networks:
-      - edge
-  influxdb:
-    build: ./influx
-    image: localbuild/influxdb:august2021
-    container_name: influxdb
-    restart: unless-stopped
-    environment:
-      INFLUXDB_DB: DBONE
-      INFLUXDB_HTTP_AUTH_ENABLED: "true"
-      INFLUXDB_ADMIN_USER: admin
-      INFLUXDB_ADMIN_PASSWORD: admin_pass
-      INFLUXDB_USER: user
-      INFLUXDB_USER_PASSWORD: user_pass
-    ports:
-      - "8082:8082"
-      - "8086:8086"
-      - "8089:8089"
-    volumes:
-      - influxData:/var/lib/influxdb
-    networks:
-      - edge
+      - app-network
+
+  # ---------------------------------------------------------------------------
+  # Mosquitto - MQTT Broker
+  # Port: 1883 (MQTT), 9001 (Websockets)
+  # Erwartet eine Konfigurationsdatei unter ./mosquitto/config/mosquitto.conf
+  # ---------------------------------------------------------------------------
   mosquitto:
-    build: ./mosquitto
-    image: localbuild/mosquitto:june2021
+    image: eclipse-mosquitto:latest
     container_name: mosquitto
     restart: unless-stopped
     ports:
       - "1883:1883"
       - "9001:9001"
     volumes:
-      - mosquittoLog:/mosquitto/log
-      - mosquittoData:/mosquitto/data
-      - mosquittoConfig:/mosquitto/config
+      - ./mosquitto/config:/mosquitto/config
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
     networks:
-      - edge
-#Create internal link network for Containers
-networks:
-  edge:
+      - app-network
 
-#Create Volumes for persistent Storage
-volumes:
-  grafanaData:
-  noderedData:
-  influxData:
-  mosquittoLog:
-  mosquittoData:
-  mosquittoConfig:
-  domoticzUserdata:
+  # ---------------------------------------------------------------------------
+  # InfluxDB - Zeitreihendatenbank
+  # Web-UI: http://<host>:8086
+  # ---------------------------------------------------------------------------
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_USER}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_ADMIN_TOKEN}
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    networks:
+      - app-network
+
+  # ---------------------------------------------------------------------------
+  # Postgres - Relationale Datenbank
+  # Port: 5432
+  # ---------------------------------------------------------------------------
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  # ---------------------------------------------------------------------------
+  # Node-RED - Flow-basierte Automatisierung
+  # Web-UI: http://<host>:1880
+  # ---------------------------------------------------------------------------
+  nodered:
+    image: nodered/node-red:latest
+    container_name: nodered
+    restart: unless-stopped
+    ports:
+      - "1880:1880"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - nodered_data:/data
+    networks:
+      - app-network
+    depends_on:
+      - mosquitto
+      - influxdb
+
+  # ---------------------------------------------------------------------------
+  # Grafana - Dashboards & Visualisierung
+  # Web-UI: http://<host>:3000
+  # ---------------------------------------------------------------------------
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - app-network
+    depends_on:
+      - influxdb
+      - postgres
+
+  # ---------------------------------------------------------------------------
+  # ultrafeeder - ADS-B Decoder (readsb/dump1090) + tar1090 Live-Karte
+  # Liest die Rohsignale vom SDR-Stick (USB-Passthrough) und stellt sie ueber
+  # das Beast-Protokoll (Port 30005) im Netzwerk bereit. Mehrere Feeder
+  # (FR24, FlightAware, ADSBexchange ...) koennen sich daran anschliessen.
+  # Live-Karte (tar1090): http://<host>:8080
+  # ---------------------------------------------------------------------------
+  ultrafeeder:
+    image: ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest
+    container_name: ultrafeeder
+    restart: unless-stopped
+    devices:
+      - /dev/bus/usb/001/003:/dev/bus/usb/001/003
+    ports:
+      - "8080:80"      # tar1090 Live-Karte
+      - "30005:30005"  # Beast-Output (raw ADS-B Daten fuer andere Feeder)
+    environment:
+      TZ: ${TZ}
+      READSB_DEVICE_TYPE: rtlsdr
+      READSB_RTLSDR_DEVICE: "00000001"
+      READSB_LAT: ${FEEDER_LAT}
+      READSB_LON: ${FEEDER_LON}
+      READSB_ALT: ${FEEDER_ALT}
+      TAR1090_LAT: ${FEEDER_LAT}
+      TAR1090_LON: ${FEEDER_LON}
+      TAR1090_ALT: ${FEEDER_ALT}
+      UPDATE_TAR1090: "true"
+    volumes:
+      - ultrafeeder_data:/var/globe_history
+    networks:
+      - app-network
+
+  # ---------------------------------------------------------------------------
+  # Flightradar24 Feeder
+  # Sendet ADS-B Daten an Flightradar24. Bezieht die Rohdaten per Netzwerk
+  # (Beast-Protokoll) vom ultrafeeder-Container statt per eigenem USB-Zugriff.
+  # ---------------------------------------------------------------------------
+  flightradar24:
+    image: ghcr.io/sdr-enthusiasts/docker-flightradar24:latest
+    container_name: flightradar24
+    restart: unless-stopped
+    environment:
+      FR24KEY: ${FR24KEY}
+      TZ: ${TZ}
+      BEASTHOST: ultrafeeder
+      BEASTPORT: 30005
+    ports:
+      - "8754:8754"
+    networks:
+      - app-network
+    depends_on:
+      - ultrafeeder
+
+  # ---------------------------------------------------------------------------
+  # evcc - Electric Vehicle Charge Controller
+  # Web-UI: http://<host>:7070
+  # Erwartet eine Konfigurationsdatei unter ./evcc/evcc.yaml
+  # ---------------------------------------------------------------------------
+  evcc:
+    image: evcc/evcc:latest
+    container_name: evcc
+    restart: unless-stopped
+    ports:
+      - "7070:7070"
+    volumes:
+      - ./evcc/evcc.yaml:/etc/evcc.yaml
+      - evcc_data:/data
+    networks:
+      - app-network
+    depends_on:
+      - mosquitto
+
+  # ---------------------------------------------------------------------------
+  # MariaDB - Relationale Datenbank
+  # Port: 3306
+  # ---------------------------------------------------------------------------
+
+  mariadb:
+    image: mariadb:11
+    container_name: mariadb
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_USER: ${MARIADB_USER}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - app-network
+
+  # ---------------------------------------------------------------------------
+  # phpMyAdmin - Web-UI f  r MariaDB/MySQL
+  # Web-UI: http://<host>:8081
+  # ---------------------------------------------------------------------------
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+    networks:
+      - app-network
+    depends_on:
+      - mariadb
+
+  # ---------------------------------------------------------------------------
+  # Pi-Hole - More info at https://github.com/pi-hole/docker-pi-hole/
+  # Web-UI: https://<host>
+  # ---------------------------------------------------------------------------
+
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:latest
+    ports:
+      # DNS Ports
+      - "53:53/tcp"
+      - "53:53/udp"
+      # Default HTTP Port
+      - "80:80/tcp"
+      # Default HTTPs Port. FTL will generate a self-signed certificate
+      - "443:443/tcp"
+      # Uncomment the line below if you are using Pi-hole as your DHCP server
+      #- "67:67/udp"
+      # Uncomment the line below if you are using Pi-hole as your NTP server
+      #- "123:123/udp"
+    environment:
+      # Set the appropriate timezone for your location (https://en.wikipedia.org/wiki/List_of_tz_database_time_zones), e.g:
+      TZ: ${TZ}
+      # Set a password to access the web interface. Not setting one will result in a random password being assigned
+      FTLCONF_webserver_api_password: ${PIHOLE_WEB_PASSWORD}
+      # If using Docker's default `bridge` network setting the dns listening mode should be set to 'ALL'
+      FTLCONF_dns_listeningMode: 'ALL'
+    # Volumes store your data between container upgrades
+    volumes:
+      # For persisting Pi-hole's databases and common configuration file
+      - './etc-pihole:/etc/pihole'
+      # Uncomment the below if you have custom dnsmasq config files that you want to persist. Not needed for most starting fresh with Pi-hole v6. If you're upgrading from v5 you and have used this directory before, you sh>
+      #- './etc-dnsmasq.d:/etc/dnsmasq.d'
+    cap_add:
+      # See https://docs.pi-hole.net/docker/#note-on-capabilities
+      # Required if you are using Pi-hole as your DHCP server, else not needed
+      #- NET_ADMIN
+      # Required if you are using Pi-hole as your NTP client to be able to set the host's system time
+      #- SYS_TIME
+      # Optional, if Pi-hole should get some more processing time
+      - SYS_NICE
+    restart: unless-stopped
+
