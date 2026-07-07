@@ -228,7 +228,7 @@ services:
   # ---------------------------------------------------------------------------
 
   mariadb:
-    image: mariadb:11
+    image: mariadb:10.11
     container_name: mariadb
     restart: unless-stopped
     ports:
@@ -244,7 +244,7 @@ services:
       - app-network
 
   # ---------------------------------------------------------------------------
-  # phpMyAdmin - Web-UI f  r MariaDB/MySQL
+  # phpMyAdmin - Web-UI fuer MariaDB/MySQL
   # Web-UI: http://<host>:8081
   # ---------------------------------------------------------------------------
   phpmyadmin:
