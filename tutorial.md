@@ -18,18 +18,18 @@ docker-compose up -d
 
 # Step 5: Portübersicht
 
-    Portainer https://iot.fritz.box:9443, 8000
+    Portainer https://<localhost>:9443, 8000
     Mosquitto 1883, 9001
     InfluxDB 8086
     Postgres 5432
     MariaDB 3306
-    phpMyAdmin http://iot.fritz.box:8081
-    Node-RED http://iot.fritz.box:1880
-    Grafana http://iot.fritz.box:3000
-    Flightradar http://iot.fritz.box:8754
-    tar1090 http://iot.fritz.box:8080
-    evcc http://iot.fritz.box:7070
-    pihole https://iot.fritz.box/admin/login
-    Traccar http://iot.fritz.box:8082
+    phpMyAdmin http://<localhost>:8081
+    Node-RED http://<localhost>:1880
+    Grafana http://<localhost>:3000
+    Flightradar http://<localhost>:8754
+    tar1090 http://<localhost>:8080
+    evcc http://<localhost>:7070
+    pihole https://<localhost>/admin/login
+    Traccar http://<localhost>:8082
 
 
