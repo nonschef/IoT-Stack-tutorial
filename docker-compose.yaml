@@ -303,3 +303,36 @@ services:
       # Optional, if Pi-hole should get some more processing time
       - SYS_NICE
     restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Traccar - GPS Tracking Server
+  # Web-UI:  http://<host>:8082
+  # GPS/OBD: Port 5055 (OsmAnd), weitere Protokoll-Ports nach Bedarf öffnen
+  # Verbindet sich mit MariaDB Datenbank "traccar".
+  # Beim ersten Start legt Traccar alle Tabellen selbst an.
+  # ---------------------------------------------------------------------------
+  traccar:
+    image: traccar/traccar:latest
+    container_name: traccar
+    restart: unless-stopped
+    ports:
+      - "8082:8082"   # Web-UI & API
+      - "5055:5055"   # OsmAnd / Standard GPS-Protokoll
+      # Weitere Protokoll-Ports bei Bedarf auskommentieren:
+      # - "5001:5001"   # Teltonika
+      # - "5006:5006"   # Wialon
+      # - "5013:5013"   # GlobalSat
+      # - "5023:5023"   # Meitrack
+    environment:
+      TZ: ${TZ}
+      # Traccar liest /opt/traccar/conf/traccar.xml beim Start.
+      # Die DB-Verbindung wird über Umgebungsvariablen eingesetzt (s.u.)
+      JAVA_OPTS: "-Xms512m -Xmx1g"
+    volumes:
+      - ./traccar/traccar.xml:/opt/traccar/conf/traccar.xml:ro
+      - ./traccar/logs:/opt/traccar/logs
+    networks:
+      - app-network
+    depends_on:
+      - mariadb
+ 
