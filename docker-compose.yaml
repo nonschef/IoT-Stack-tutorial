@@ -26,6 +26,10 @@ volumes:
   mariadb_data:
   evcc_data:
   ultrafeeder_data:
+  ultrafeeder_collectd:
+  anisette_data:
+  macless_haystack_data:
+ 
 
 services:
 
@@ -335,4 +339,87 @@ services:
       - app-network
     depends_on:
       - mariadb
+
+
+  # ---------------------------------------------------------------------------
+  # go-haystack / macless-haystack - Apple "Find My" Tracking ohne Apple-Hardware
+  # Besteht aus zwei Containern:
+  #   1. anisette     → Apple-Authentifizierungsserver (intern, kein Browser-Zugriff)
+  #   2. macless-haystack → Endpoint-Server, Web-UI: http://<host>:6176
+  #
+  # WICHTIG: Beim allerersten Start muss macless-haystack interaktiv
+  # eingerichtet werden (Apple-ID, Passwort, 2FA per SMS):
+  #   docker compose run --rm macless-haystack
+  # Danach normal starten: docker compose up -d
+  #
+  # Geräteverwaltung (Tags hinzufügen/anzeigen):
+  # https://dchristl.github.io/macless-haystack/
+  # ---------------------------------------------------------------------------
+  anisette:
+    image: dadoum/anisette-v3-server:latest
+    container_name: anisette
+    restart: always
+    ports:
+      - "6969:6969"
+    volumes:
+      - anisette_data:/home/Alcoholic/.config/anisette-v3
+    networks:
+      - app-network
+ 
+  macless-haystack:
+    image: christld/macless-haystack:latest
+    container_name: macless-haystack
+    restart: unless-stopped
+    ports:
+      - "6176:6176"
+    volumes:
+      - macless_haystack_data:/app/endpoint/data
+    environment:
+      ANISETTE_SERVER: http://anisette:6969
+      TZ: ${TZ}
+    networks:
+      - app-network
+    depends_on:
+      - anisette
+ 
+  # ---------------------------------------------------------------------------
+  # findmy-traccar-bridge - Brücke zwischen FindMy/OpenHaystack und Traccar
+  # Fragt die verschlüsselten Positionen deiner Beacons aus dem Apple
+  # FindMy-Netzwerk ab und überträgt sie per OsmAnd-Protokoll an Traccar.
+  # Die Geräte erscheinen danach automatisch in der Traccar-Oberfläche.
+  #
+  # WICHTIG: Eigener Fork (github.com/nonschef/findmy-traccar-bridge), da das
+  # Original-Projekt in der plists/-Funktion nur rohe XML-.plist-Dateien
+  # unterstützt. Da "python3 -m findmy decrypt" moderne .json-Dateien ausgibt,
+  # wurde device_utilities.py um JSON-Unterstützung erweitert (via
+  # FindMyAccessory.from_json(), die die Bibliothek selbst mitbringt).
+  #
+  # ZWEI Wege, Geräte einzubinden (auch gleichzeitig nutzbar):
+  #   1. DIY-Beacons (macless-haystack, selbst generierte Keys):
+  #      → BRIDGE_PRIVATE_KEYS in der .env eintragen (kommagetrennt)
+  #   2. Echte Apple-Geräte/Zubehör (per "python3 -m findmy decrypt"
+  #      exportierte .json-Dateien, ODER klassische .plist-Dateien):
+  #      → Dateien in ./findmy-traccar-bridge/plists/ ablegen
+  #
+  # Abfrage-Intervall: Standard 3600 Sek. (1x/Std.) – nicht zu oft abfragen,
+  # da Apple-Accounts bei zu häufigen Anfragen gesperrt werden können.
+  # ---------------------------------------------------------------------------
+  findmy-traccar-bridge:
+    build: https://github.com/nonschef/findmy-traccar-bridge.git
+    container_name: findmy-traccar-bridge
+    restart: unless-stopped
+    volumes:
+      - ./findmy-traccar-bridge/data:/bridge/data
+      - ./findmy-traccar-bridge/plists:/bridge/plists
+    environment:
+      TZ: ${TZ}
+      BRIDGE_PRIVATE_KEYS: ${BRIDGE_PRIVATE_KEYS}
+      BRIDGE_PLIST_PATH: /bridge/plists
+      BRIDGE_TRACCAR_SERVER: http://traccar:5055
+      BRIDGE_POLL_INTERVAL: ${BRIDGE_POLL_INTERVAL:-3600}
+    networks:
+      - app-network
+    depends_on:
+      - traccar
+      - macless-haystack
  
